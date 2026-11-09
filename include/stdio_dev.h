@@ -99,6 +99,7 @@ struct stdio_dev *stdio_get_by_name(const char *name);
 
 int drv_lcd_init(void);
 int drv_video_init(void);
+int gemini_fb_console_register(void);
 int drv_keyboard_init(void);
 int drv_usbacm_init(void);
 int drv_nc_init(void);

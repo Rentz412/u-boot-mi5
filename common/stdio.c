@@ -336,6 +336,11 @@ int stdio_add_devices(void)
 			splash_display();
 	}
 
+#if CONFIG_IS_ENABLED(QCOM_GEMINI)
+	ret = gemini_fb_console_register();
+	if (ret)
+		return ret;
+#endif
 	drv_system_init();
 	serial_stdio_init();
 #ifdef CONFIG_USB_FUNCTION_ACM

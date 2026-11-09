@@ -1,0 +1,7 @@
+DEFAULT ubuntu
+TIMEOUT 0
+LABEL ubuntu
+    LINUX /boot/vmlinuz-6.3.1-gemini-rentz-v2.6
+    INITRD /boot/initrd.img-6.3.1-gemini-rentz-v2.6
+    FDTDIR /boot/gemini
+    APPEND console=tty0 root=UUID=YOUR-ROOT-FILESYSTEM-UUID rw

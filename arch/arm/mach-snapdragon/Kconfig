@@ -1,5 +1,19 @@
 if ARCH_SNAPDRAGON
 
+config QCOM_GEMINI
+	bool "Xiaomi Mi 5 with stock firmware handoff"
+	select OF_BOARD_SETUP
+	select FS_EXT4
+	select BLK
+	select PXE_UTILS
+	select SUPPORT_RAW_INITRD
+	select GZIP
+	select SHA256
+	help
+	  Chainload from the stock Android bootloader. Reuse its display,
+	  initialized UFS link and firmware memory map. Storage is read only.
+	  Boot independent files using the standard extlinux parser and booti.
+
 config SYS_SOC
 	default "snapdragon"
 
