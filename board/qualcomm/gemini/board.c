@@ -19,6 +19,7 @@
 #include <u-boot/sha256.h>
 
 #include "gemini.h"
+#include "panel.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -37,9 +38,11 @@ static struct {
 	bool active, config_loaded, kernel_loaded, initrd_loaded, fdt_loaded;
 } boot;
 
+static int detected_panel;
+
 #include "fdt.inc"
 
-static const char *gemini_panel(const void *fdt)
+static const char *gemini_linux_panel(const void *fdt)
 {
 	bool jdi = fdt_node_offset_by_compatible(fdt, -1, "jdi,fhd-r63452") >= 0;
 	bool lgd = fdt_node_offset_by_compatible(fdt, -1, "lgd,fhd-td4322") >= 0;
@@ -85,13 +88,34 @@ static int gemini_nonce(void)
 	return 0;
 }
 
+static int gemini_firmware_panel(const void *fdt)
+{
+	const char *args, *marker;
+	int chosen, len;
+
+	marker = fdt_getprop(fdt, 0, "u-boot,gemini-input", &len);
+	if (!marker || len != sizeof("universal-v1") ||
+	    memcmp(marker, "universal-v1", len))
+		return -EINVAL;
+	chosen = fdt_path_offset(fdt, "/chosen");
+	if (chosen < 0)
+		return chosen;
+	args = fdt_getprop(fdt, chosen, "bootargs", &len);
+	if (!args || len < 1)
+		return -EINVAL;
+	return gemini_panel_from_bootargs(args, len);
+}
+
 void qcom_late_init(void)
 {
-	const char *panel = gemini_panel(gd->fdt_blob);
+	const char *panel;
 	char path[80];
 
+	detected_panel = gemini_firmware_panel(gd->fdt_blob);
+	panel = gemini_panel_name(detected_panel);
 	if (!panel)
-		panic("Mi 5: missing or ambiguous firmware panel\n");
+		panic("Mi 5: firmware panel detection failed (%d)\n", detected_panel);
+	printf("Mi 5 universal-v1: aboot detected %s panel\n", panel);
 	snprintf(path, sizeof(path), "msm8996-xiaomi-gemini-%s.dtb", panel);
 	if (env_set("fdtfile", path))
 		panic("Mi 5: cannot set fdtfile\n");
@@ -102,7 +126,7 @@ void qcom_late_init(void)
 
 static int gemini_args(void *fdt)
 {
-	char args[4096], suffix[256];
+	char args[4096], suffix[384];
 	const char *src, *end, *base = env_get("bootargs");
 	int len, chosen;
 	size_t size, used;
@@ -133,7 +157,9 @@ static int gemini_args(void *fdt)
 	snprintf(suffix, sizeof(suffix),
 		 " gemini_uboot_handoff=%s gemini_uboot_source=ext4"
 		 " gemini_uboot_autoboot=1 gemini_uboot_flow=extlinux"
-		 " gemini_uboot_config=%s", boot.nonce, boot.config_hash);
+		 " gemini_uboot_config=%s gemini_uboot_input=universal-v1"
+		 " gemini_uboot_panel=%s", boot.nonce, boot.config_hash,
+		 gemini_panel_name(detected_panel));
 	if (strlcat(args, suffix, sizeof(args)) >= sizeof(args))
 		return -E2BIG;
 	chosen = fdt_path_offset(fdt, "/chosen");
@@ -144,8 +170,8 @@ static int gemini_args(void *fdt)
 
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
-	const char *panel = gemini_panel(blob);
-	const char *runtime_panel = gemini_panel(gd->fdt_blob);
+	const char *panel = gemini_linux_panel(blob);
+	const char *runtime_panel = gemini_panel_name(detected_panel);
 
 	if (!boot.active || !boot.config_loaded || !boot.kernel_loaded ||
 	    !boot.initrd_loaded || !boot.fdt_loaded || !panel || !runtime_panel ||
@@ -314,8 +340,8 @@ static int gemini_getfile(struct pxe_context *ctx, const char *path,
 			ret = -EINVAL;
 			goto out;
 		}
-		panel = gemini_panel(buffer);
-		runtime_panel = gemini_panel(gd->fdt_blob);
+		panel = gemini_linux_panel(buffer);
+		runtime_panel = gemini_panel_name(detected_panel);
 		if (!panel || !runtime_panel || strcmp(panel, runtime_panel)) {
 			ret = -EINVAL;
 			goto out;

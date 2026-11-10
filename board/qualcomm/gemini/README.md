@@ -23,14 +23,41 @@ make O=../build-mi5 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) u-boot-nodtb.bin
 ### Packaging the boot image
 
 The stock bootloader expects a legacy Android v0 boot image with a board-specific
-DTB appended. Use `mkimage.py` (alongside AOSP's `mkbootimg.py` and the matching
-firmware input DTBs) to wrap `u-boot-nodtb.bin`.
+input DTB appended. The packer now creates a single `u-boot-mi5.img` for both
+JDI and LGD panels. Pass a known-good Mi 5 firmware input DTB (either panel),
+or a previously generated common input DTB:
 
-Because runtime panel auto-detection isn't implemented yet, JDI and LGD panels
-need separate U-Boot images built with their respective input DTBs. The runtime
-DTB baked into U-Boot determines `fdtfile`:
-- `msm8996-xiaomi-gemini-jdi.dtb`
-- `msm8996-xiaomi-gemini-lgd.dtb`
+```sh
+python3 board/qualcomm/gemini/mkimage.py \
+    --uboot ../build-mi5/u-boot-nodtb.bin \
+    --input-dtb /path/to/gemini-input.dtb \
+    --mkbootimg /path/to/mkbootimg.py --output ../images-mi5
+```
+
+`dtc` and `fdtget` must be installed. The packer preserves the known input tree's
+Qualcomm matching IDs and hardware layout, replacing its fixed Linux panel
+compatible with a neutral control-tree marker. It never modifies the input file.
+Generated `input-dtc.log` records diagnostics inherited from the supplied tree.
+
+U-Boot reads the stock aboot `mdss_mdp.panel=` argument from the external FDT
+and selects `msm8996-xiaomi-gemini-jdi.dtb` or
+`msm8996-xiaomi-gemini-lgd.dtb` through `fdtfile`. The initial allowlist contains
+the exact `qcom,mdss_dsi_jdi_fhd_r63452_cmd` and
+`qcom,mdss_dsi_lgd_fhd_td4322_cmd` names, with `1:dsi:0:` initialized-panel
+prefix. Missing, repeated, malformed or unknown panel parameters stop boot;
+they do not silently select a default. Other JDI naming variants need evidence
+before they can be added. Loaded Linux DTBs must match the detected panel.
+
+This input control DTB is for U-Boot, not for direct Linux boot. Linux still
+uses separate panel DTBs stored on ext4. Touchscreen variants are independent:
+select a DTB directory matching the actual touch controller, with both panel
+filenames inside it. The loader does not auto-detect touch controllers.
+
+The common-input image has passed a temporary `fastboot boot` test on the JDI
+device with the existing 6.3.1 Ubuntu kernel, verified using an exact boot nonce,
+fresh Linux boot ID, correct Linux panel compatible and functioning USB serial.
+LGD parameters have been exercised in host tests; LGD hardware remains untested.
+This experimental common version has not been installed permanently.
 
 ## How Booting Works (`gemini_boot`)
 
@@ -62,7 +89,7 @@ supported.
 
 A typical setup uses `FDTDIR /boot/gemini`, which automatically resolves to
 `msm8996-xiaomi-gemini-jdi.dtb` or `msm8996-xiaomi-gemini-lgd.dtb` based on
-`fdtfile`. Make sure the kernel DTB on disk matches your panel variant.
+`fdtfile` and the panel reported by aboot. Make sure the kernel DTB on disk matches your panel variant.
 
 ### Current Limitations & Requirements
 
